@@ -3,27 +3,54 @@ import datetime
 from distutils.version import StrictVersion
 import hashlib
 import os.path
-import shutil
-import socket
-import sys
-import time
 import random
-import re
-
-import seesaw
-from seesaw.config import NumberConfigValue
+from seesaw.config import realize, NumberConfigValue
 from seesaw.externalprocess import ExternalProcess
 from seesaw.item import ItemInterpolation, ItemValue
-from seesaw.pipeline import Pipeline
-from seesaw.project import Project
 from seesaw.task import SimpleTask, LimitConcurrent
 from seesaw.tracker import GetItemFromTracker, PrepareStatsForTracker, \
     UploadWithTracker, SendDoneToTracker
+import shutil
+import socket
+import subprocess
+import sys
+import time
+import string
+
+import seesaw
+from seesaw.externalprocess import WgetDownload
+from seesaw.pipeline import Pipeline
+from seesaw.project import Project
+from seesaw.util import find_executable
 
 
 # check the seesaw version
-if StrictVersion(seesaw.__version__) < StrictVersion("0.1.5"):
-    raise Exception("This pipeline needs seesaw version 0.1.5 or higher.")
+if StrictVersion(seesaw.__version__) < StrictVersion("0.8.5"):
+    raise Exception("This pipeline needs seesaw version 0.8.5 or higher.")
+
+
+###########################################################################
+# Find a useful Wget+Lua executable.
+#
+# WGET_LUA will be set to the first path that
+# 1. does not crash with --version, and
+# 2. prints the required version string
+WGET_LUA = find_executable(
+    "Wget+Lua",
+    ["GNU Wget 1.14.lua.20130523-9a5c", "GNU Wget 1.14.lua.20160530-955376b"],
+    [
+        "./wget-lua",
+        "./wget-lua-warrior",
+        "./wget-lua-local",
+        "../wget-lua",
+        "../../wget-lua",
+        "/home/warrior/wget-lua",
+        "/usr/bin/wget-lua"
+    ]
+)
+
+if not WGET_LUA:
+    raise Exception("No usable Wget+Lua found.")
 
 
 ###########################################################################
@@ -31,7 +58,6 @@ if StrictVersion(seesaw.__version__) < StrictVersion("0.1.5"):
 #
 # Update this each time you make a non-cosmetic change.
 # It will be added to the WARC files and reported to the tracker.
-
 VERSION = "20170205.01"
 USER_AGENT = 'ArchiveTeam'
 TRACKER_ID = 'photosynthdisco'
@@ -84,9 +110,7 @@ class PrepareDirectories(SimpleTask):
 
     def process(self, item):
         item_name = item["item_name"]
-        escaped_item_name = item_name.replace(':', '_').replace('/', '_')
-        item['escaped_item_name'] = escaped_item_name
-
+        escaped_item_name = item_name.replace(':', '_').replace('/', '_').replace('~', '_')
         dirname = "/".join((item["data_dir"], escaped_item_name))
 
         if os.path.isdir(dirname):
@@ -94,11 +118,11 @@ class PrepareDirectories(SimpleTask):
 
         os.makedirs(dirname)
 
-#        item["item_dir"] = dirname TODO
-#        item["tar_file_base"] = "%s-%s-%s" % ( TODO
-#            self.warc_prefix, escaped_item_name, TODO
-#            time.strftime("%Y%m%d-%H%M%S") TODO
-#        ) TODO
+        item["item_dir"] = dirname
+        item["warc_file_base"] = "%s-%s-%s" % (self.warc_prefix, escaped_item_name,
+            time.strftime("%Y%m%d-%H%M%S"))
+
+        open("%(item_dir)s/%(warc_file_base)s.warc.gz" % item, "w").close()
 
 
 class MoveFiles(SimpleTask):
@@ -106,33 +130,15 @@ class MoveFiles(SimpleTask):
         SimpleTask.__init__(self, "MoveFiles")
 
     def process(self, item):
-#        os.rename("%(item_dir)s/%(tar_file_base)s.tar" % item, TODO
-#                  "%(data_dir)s/%(tar_file_base)s.tar" % item) TODO
+        # NEW for 2014! Check if wget was compiled with zlib support
+        if os.path.exists("%(item_dir)s/%(warc_file_base)s.warc" % item):
+            raise Exception('Please compile wget with zlib support!')
+
+        os.rename("%(item_dir)s/%(warc_file_base)s.warc.gz" % item,
+              "%(data_dir)s/%(warc_file_base)s.warc.gz" % item)
 
         shutil.rmtree("%(item_dir)s" % item)
 
-
-class CustomScraperArgs(object):
-    def realize(self, item):
-        item_type, item_value = item['item_name'].split(':', 1)
-
-        if item_type == 'item':
-#            return ["lua", "guid-extract.lua"] TODO
-        else:
-            raise ValueError('unhandled item type: {0}'.format(item_type))
-
-
-class PackFiles(SimpleTask):
-    def __init__(self):
-        SimpleTask.__init__(self, "Packer")
-
-    def process(self, item):
-        item_type, item_value = item['item_name'].split(':', 1)
-
-        if item_type == 'item':
-            pass
-#            shutil.make_archive("%(item_dir)s/%(tar_file_base)s" % item, TODO
-#                'tar', item_value) TODO
 
 def get_hash(filename):
     with open(filename, 'rb') as in_file:
@@ -141,21 +147,73 @@ def get_hash(filename):
 
 CWD = os.getcwd()
 PIPELINE_SHA1 = get_hash(os.path.join(CWD, 'pipeline.py'))
-#SCRIPT_SHA1 = get_hash(FILE) TODO
+LUA_SHA1 = get_hash(os.path.join(CWD, 'photosynth.lua'))
+LUA_SHA2 = get_hash(os.path.join(CWD, 'photosynth-func.lua'))
 
 
 def stats_id_function(item):
     # NEW for 2014! Some accountability hashes and stats.
     d = {
         'pipeline_hash': PIPELINE_SHA1,
+        'lua_hash': LUA_SHA1,
+        'lua_func_hash': LUA_SHA2,
         'python_version': sys.version,
-#        'script_hash': SCRIPT_SHA1,   TODO
     }
-
-    print(d)
 
     return d
 
+
+class WgetArgs(object):
+    def realize(self, item):
+        wget_args = [
+            WGET_LUA,
+            "-U", USER_AGENT,
+            "-nv",
+            "--no-cookies",
+            "--lua-script", "photosynth.lua",
+            "-o", ItemInterpolation("%(item_dir)s/wget.log"),
+            "--no-check-certificate",
+            "--output-document", ItemInterpolation("%(item_dir)s/wget.tmp"),
+            "--truncate-output",
+            "-e", "robots=off",
+            "--rotate-dns",
+            "--recursive", "--level=inf",
+            "--no-parent",
+            "--page-requisites",
+            "--timeout", "30",
+            "--tries", "inf",
+            "--domains", "photosynth.net",
+            "--span-hosts",
+            "--waitretry", "30",
+            "--warc-file", ItemInterpolation("%(item_dir)s/%(warc_file_base)s"),
+            "--warc-header", "operator: Archive Team",
+            "--warc-header", "photosynth-dld-script-version: " + VERSION,
+            "--warc-header", ItemInterpolation("photosynth-item: %(item_name)s")
+            "--warc-header", "photosynth.lua-hash: " + LUA_SHA1,
+            "--warc-header", "photosynth-func.lua-hash: " + LUA_SHA1,
+            "--warc-header", "pipeline.py-hash: " + PIPELINE_SHA1
+        ]
+        
+        item_name = item['item_name']
+        assert ':' in item_name
+        item_type, item_value = item_name.split(':', 1)
+        
+        item['item_type'] = item_type
+        item['item_value'] = item_value
+
+        if item_type == 'user':
+            wget_args.append('https://photosynth.net/userprofilepage.aspx?user={item_value}'.format(**locals()))
+        else:
+            raise Exception('Unknown item')
+
+        if 'bind_address' in globals():
+            wget_args.extend(['--bind-address', globals()['bind_address']])
+            print('')
+            print('*** Wget will bind address at {0} ***'.format(
+                globals()['bind_address']))
+            print('')
+            
+        return realize(wget_args, item)
 
 ###########################################################################
 # Initialize the project.
@@ -166,13 +224,8 @@ project = Project(
     title="Photosynth Discovery",
     project_html="""
         <img class="project-logo" alt="Project logo" src="http://archiveteam.org/images/6/64/Photosynth_logo.png" height="50px" title=""/>
-        <h2>Photosynth discovery.
-        <span class="links">
-             <a href="http://tracker.archiveteam.org/photosynthdisco/">Leaderboard</a>
-             <a href="http://archiveteam.org/index.php?title=Photosynth">Wiki</a> &middot;
-         </span>
-        </h2>
-        <p>This is the discovery phase</p>
+        <h2>photosynth.net <span class="links"><a href="http://photosynth.net/">Website</a> &middot; <a href="http://tracker.archiveteam.org/photosynthdisco/">Leaderboard</a></span></h2>
+        <p>Discovering Photosynth.</p>
     """
 )
 
@@ -181,19 +234,22 @@ pipeline = Pipeline(
     GetItemFromTracker("http://%s/%s" % (TRACKER_HOST, TRACKER_ID), downloader,
         VERSION),
     PrepareDirectories(warc_prefix="photosynthdisco"),
-    ExternalProcess('Scraper', CustomScraperArgs(),
+    WgetDownload(
+        WgetArgs(),
         max_tries=2,
-        accept_on_exit_code=[0],
+        accept_on_exit_code=[0, 4, 8],
         env={
-            "item_dir": ItemValue("item_dir")
+            "item_dir": ItemValue("item_dir"),
+            "item_value": ItemValue("item_value"),
+            "item_type": ItemValue("item_type"),
+            "warc_file_base": ItemValue("warc_file_base"),
         }
     ),
-    PackFiles(),
     PrepareStatsForTracker(
         defaults={"downloader": downloader, "version": VERSION},
         file_groups={
             "data": [
-#                ItemInterpolation("%(item_dir)s/%(tar_file_base)s.tar") TODO
+                ItemInterpolation("%(item_dir)s/%(warc_file_base)s.warc.gz")
             ]
         },
         id_function=stats_id_function,
@@ -207,13 +263,13 @@ pipeline = Pipeline(
             downloader=downloader,
             version=VERSION,
             files=[
-#                ItemInterpolation("%(data_dir)s/%(tar_file_base)s.tar") TODO
+                ItemInterpolation("%(data_dir)s/%(warc_file_base)s.warc.gz")
             ],
             rsync_target_source_path=ItemInterpolation("%(data_dir)s/"),
             rsync_extra_args=[
                 "--recursive",
                 "--partial",
-                "--partial-dir", ".rsync-tmp"
+                "--partial-dir", ".rsync-tmp",
             ]
             ),
     ),
@@ -222,4 +278,3 @@ pipeline = Pipeline(
         stats=ItemValue("stats")
     )
 )
-
