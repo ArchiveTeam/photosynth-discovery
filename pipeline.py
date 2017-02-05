@@ -94,11 +94,11 @@ class PrepareDirectories(SimpleTask):
 
         os.makedirs(dirname)
 
-        item["item_dir"] = dirname
-        item["tar_file_base"] = "%s-%s-%s" % (
-            self.warc_prefix, escaped_item_name,
-            time.strftime("%Y%m%d-%H%M%S")
-        )
+#        item["item_dir"] = dirname
+#        item["tar_file_base"] = "%s-%s-%s" % (
+#            self.warc_prefix, escaped_item_name,
+#            time.strftime("%Y%m%d-%H%M%S")
+#        )
 
 
 class MoveFiles(SimpleTask):
