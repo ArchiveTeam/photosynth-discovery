@@ -17,24 +17,67 @@ local stringsearch = {}
 local geosearch = {}
 local usersearch = {}
 
-local newquestions = {}
-local newusers = {}
-
 local newGuidList = {}
 local newUserList = {}
+local newUserGuidList = {
+	-- [USERNAME] = "GUID"
+}
 
--- URL blacklist
-for ignore in io.lines("ignore-list", "r") do
-	downloaded[ignore] = true
+-- Separate job: forum.aspx
+photosynthDiscoWhitelist = {
+-- is later added automatically with inserted username "https?://photosynth.net/userprofilepage.aspx%?user=<USERNAME>",
+"https?://photosynth%.net/rest/v1%.0/",
+"/thumb%.jpg$"
+}
+
+-- RSS feed?
+photosynthDiscoBlacklist = {
+'https?://photosynth.net/explore.aspx',
+"https?://photosynth.net/join.aspx",
+"https?://photosynth.net/create.aspx",
+"https?://photosynth.net/about.aspx",
+"https?://photosynth.net/help.aspx",
+"https?://photosynth.net/ice.aspx",
+"https?://photosynth.net/search.aspx",
+"https?://photosynth.net/forum.aspx",
+
+"https?://photosynth.net/preview/about",
+"https?://photosynth.net/preview/upload",
+
+"http://cdn1.ps1.photosynth.net/installer/2014-08-07/PhotosynthInstall.exe",
+
+"https?://photosynth.net/userprofilepage.aspx%?user=",
+
+"https?://photosynth.net/edit/.*",
+
+"^https?://login.live.com/login.srf",
+"bing%.com/",
+"msn%.com/",
+"microsoft%.com/",
+
+}
+
+function regexEscape(str)
+	return str:gsub("[%(%)%.%%%+%-%*%?%[%^%$%]]", "%%%1")
+end
+
+wget.callbacks.init = function ()
+	-- URL blacklist
+	for ignore in io.lines("ignore-list", "r") do
+		--print("Ignoring: ".. ignore)
+		downloaded[ignore] = true
+	end
 end
 
 -- Add items from ENV
-if item_type == "stringsearch" then
+if item_type == "stringsearch" then	-- search API
 	for jobitem in string.gmatch(item_value, "([^,]+)") do
-		stringsearch[jobitem] = true
+		if #jobitem ~= 0 then
+			stringsearch[jobitem] = true
+		end
 	end
 	
-elseif item_type == "geosearch" then
+elseif item_type == "geosearch" then	-- geosearch API
 	-- local disco by vad
 	--[[
 
@@ -47,8 +90,17 @@ elseif item_type == "geosearch" then
 		file:write("https://photosynth.net/rest/v1.0/search/bbox/compact?collectionTypeFilter=All&slat=-90&wlon=".. i .."&nlat=90&elon=".. i+1 .."&numRows=1000&offset=0", "\n")
 	end
 	]]
-elseif item_type == "discovery" then
+elseif item_type == "user" then	-- User profile pages
+	for jobitem in string.gmatch(item_value, "([^,]+)") do
+		jobitem = regexEscape(jobitem)
+		table.insert(photosynthDiscoWhitelist, "user=" .. jobitem)
+		table.insert(photosynthDiscoWhitelist, "username=" .. jobitem)
+		io.stdout:write("Adding jobitem to whitelist: ".. jobitem, "\n")
+	end
 	
+--[[elseif item_type == "guid" then
+	
+	]]
 else
 	io.stdout:write("ERROR! Unknown item type: ".. item_type)
 	io.stdout:write("Exiting...")
@@ -72,36 +124,7 @@ end
 -- https://photosynth.net/view/1e509490-5657-453d-a2f6-2e55d14ae512
 -- to trigger redirection 302 to view.aspx?cid= ...
 
--- Separate job: forum.aspx
-photosynthDiscoWhitelist = {
-"^https?://photosynth.net/userprofilepage.aspx%?user=",
-"^https?://photosynth%.net/rest/v1%.0/",
 
-}
-
--- RSS feed?
-photosynthDiscoBlacklist = {
-'https?://photosynth.net/explore.aspx',
-"https?://photosynth.net/join.aspx",
-"https?://photosynth.net/create.aspx",
-"https?://photosynth.net/about.aspx",
-"https?://photosynth.net/help.aspx",
-"https?://photosynth.net/ice.aspx",
-"https?://photosynth.net/search.aspx",
-
-"https?://photosynth.net/preview/about",
-"https?://photosynth.net/preview/upload",
-
-"http://cdn1.ps1.photosynth.net/installer/2014-08-07/PhotosynthInstall.exe",
-
-
-"^https?://login.live.com/login.srf",
-"^https?://photosynth.net/view.aspx%?cid=.*",
-"bing%.com/",
-"msn%.com/",
-"microsoft%.com/",
-
-}
 
 -- return:
 -- TRUE - will be added to queue
@@ -111,14 +134,15 @@ allowed = function(url)
   
 	for i = 1, #photosynthDiscoWhitelist do
 		if string.find(url, photosynthDiscoWhitelist[i]) then
-			print("+++ ".. url:sub(1, 80))
+			--print(photosynthDiscoWhitelist[i])
+			--print("+++ ".. url:sub(1, 80))
 			return true
 		end
 	end
 	
 	for i = 1, #photosynthDiscoBlacklist do
 		if string.find(url, photosynthDiscoBlacklist[i]) then
-			print("--- ".. url:sub(1, 80))
+			--print("--- ".. url:sub(1, 80))
 			return false
 		end
 	end
@@ -134,19 +158,23 @@ function isAdded(url)
 	if downloaded[url] or addedtolist[url] then
 		return true
 	end
+	return false
 end
 
 -- Custom Accept/Rejection rules
 wget.callbacks.download_child_p = function(urlpos, parent, depth, start_url_parsed, iri, verdict, reason)
 	local url = urlpos["url"]["url"]
 	local html = urlpos["link_expect_html"]
-
-	if (downloaded[url] ~= true and addedtolist[url] ~= true) and (allowed(url) or html == 0) then
-		
+	
+	
+	
+	if (downloaded[url] ~= true and addedtolist[url] ~= true) and (allowed(url)--[[ or html == 0]]) then
+		--print("accepted URL: ".. url)
 		addedtolist[url] = true
 		return true
 		
 	else
+		--print("--declined URL: ".. url)
 		return false
 	end
 end
@@ -160,11 +188,15 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
 	local fileText
 	
 	if url:find("https://photosynth.net/", 1, true) then
-		io.stdout:write("Checking for GUIDs+Users: ", url, "\n")
-		io.stdout:flush()
+		--io.stdout:write("Checking for GUIDs+Users: ", url, "\n")
+		--io.stdout:flush()
 		if not fileText then fileText = read_file(file) end
 		findGuids(fileText, newGuidList)
 		findUsers(fileText, newUserList)
+		
+		for name in fileText:gmatch('"Name":"(.-)",') do
+			--print("Upload title: ".. name)
+		end
 	end
 	
 	-- stringsearch component
@@ -175,7 +207,7 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
 		--findUsers(fileText, newUserList)
 		
 		-- is offset==0?
-		if isAdded(url) == false and tonumber(url:match("https://photosynth%.net/rest/v1%.0/search/%?q=.-&offset=(%d+).*")) == 0 then
+		if tonumber(url:match("https://photosynth%.net/rest/v1%.0/search/%?q=.-&offset=(%d+).*")) == 0 then
 			-- we grabbed the first page, see how many results there are and generate urls
 			
 			
@@ -219,7 +251,7 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
 		--findUsers(fileText, newUserList)
 		
 		-- is offset==0?
-		if isAdded(url) == false and tonumber(url:match("https://photosynth.net/rest/v1.0/search/bbox/%?.-&offset=(%d+).*")) == 0 then
+		if tonumber(url:match("https://photosynth.net/rest/v1.0/search/bbox/%?.-&offset=(%d+).*")) == 0 then
 			
 			if not fileText then fileText = read_file(file) end
 			local totalResults = findTotalResults(fileText)
@@ -231,8 +263,10 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
 				local URLList = createSubJobGeo(totalResults, wlon)
 				
 				for i = 1, #URLList do
-					addedtolistAdd(URLList[i])
-					table.insert(urls, {url = URLList[i]})
+					if isAdded(URLList[i]) == false then
+						addedtolistAdd(URLList[i])
+						table.insert(urls, {url = URLList[i]})
+					end
 				end
 				
 				io.stdout:write("[INFO] ".. #URLList .." geo-URLs added to queue!", "\n")
@@ -244,28 +278,76 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
 	end
 	
 	-- usersearch component
-	if isAdded(url) == false and url:find("https://photosynth.net/userprofilepage.aspx?user=", 1, true) then
-		local username = url:match("%??user=(.+)")
+	if url:find("https://photosynth.net/userprofilepage.aspx?user=", 1, true) then
+		local username = url:match("user=(.-)&") or url:match("user=(.-)$")
 		
-		--local fileText = read_file(file)
+		-- extract UserGuid if we haven't done it yet
+		if not newUserGuidList[username] then
 		
-		--findGuids(fileText, newGuidList)
-		--findUsers(fileText, newUserList)
+			local userGuid = fileText:match("'getusersynths', '(%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x)'")
+			print("userGuid: ".. tostring(userGuid), "username: ".. username)
+			if userGuid then
+				newUserGuidList[username] = userGuid
+			end
+			
+		end
 		
-		table.insert(urls, {url = "https://photosynth.net/rest/v1.0/users/".. username .."/favorites?numRows=100&offset=0"})
+		local newurl = "https://photosynth.net/rest/v1.0/users/".. username .."/favorites?numRows=100&offset=0"
+		if not isAdded(newurl) then
+			table.insert(urls, {url = newurl})
+		end
 		-- user stats for public and unlisted synths
-		table.insert(urls, {url = "https://photosynth.net/rest/v1.0/users/".. username .."/"})
+		local newurl = "https://photosynth.net/rest/v1.0/users/".. username .."/"
+		
+		if not isAdded(newurl) then
+			table.insert(urls, {url = newurl})
+		end
+		
+	end
+	
+	-- Discover user's uploads
+	if url:find("https?://photosynth.net/rest/v1.0/users/(.-)/$") then
+		local username = url:match("https://photosynth.net/rest/v1.0/users/(.-)/")
+		if newUserGuidList[username] then
+			if not fileText then fileText = read_file(file) end
+			local count = 0
+			
+			for publicCount in fileText:gmatch("\"PublicCount\":(%d+)") do
+				count = count + publicCount
+			end
+			
+			if count > 0 then
+				-- UNDOCUMENTED API
+				local getUploadsUrl = "https://photosynth.net/PhotosynthHandler.ashx"
+				
+				local step = 10
+				local maxIter = round(math.ceil(count/step)*step, 1)
+				for i = 0, maxIter, step do
+				
+					local postData = "collectionId=&cmd=getusersynths&text=".. i+step ..",".. i ..",".. newUserGuidList[username]
+					--print("Queued: ".. i+step ..",".. i)
+					table.insert(urls, {url = getUploadsUrl, post_data = postData})
+					
+				end
+				
+				io.stdout:write("[INFO] Found ".. count .." uploads by ".. username ..", adding ".. tostring(math.ceil(maxIter/step)) .." URLs\n")
+				io.stdout:flush()
+			end
+		else
+			io.stdout:write("[ERR] User GUID for User ".. username .." not found!\n")
+			io.stdout:flush()
+		end
 	end
 	
 	-- if user favorite page
-	if isAdded(url) == false and url:match("https://photosynth.net/rest/v1.0/users/.-/favorites") then
+	if url:match("https://photosynth.net/rest/v1.0/users/.-/favorites") then
 		
 		
 		--findGuids(fileText, newGuidList)
 		--findUsers(fileText, newUserList)
 		
 		--if offset=0
-		if tonumber(url:match("https://photosynth.net/rest/v1.0/users/.-/favorites?numRows=%d+&offset=(%d+)")) == 0 then
+		if tonumber(url:match("https://photosynth.net/rest/v1.0/users/.-/favorites%?numRows=%d+&offset=(%d+)")) == 0 then
 			
 			if not fileText then fileText = read_file(file) end
 			local totalResults = findTotalResults(fileText)
@@ -275,8 +357,12 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
 				local URLList = createSubJobCustom(totalResults, url)
 				
 				for i = 1, #URLList do
-					addedtolistAdd(URLList[i])
-					table.insert(urls, {url = URLList[i]})
+					if isAdded(URLList[i]) == false then
+						addedtolistAdd(URLList[i])
+						table.insert(urls, {url = URLList[i]})
+					else
+						print("URL already exists, don't add: ".. URLList[i])
+					end
 				end
 				
 				io.stdout:write("[INFO] ".. #URLList .." favorite URLs added to queue!", "\n")
@@ -284,6 +370,7 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
 			end
 		end
 	end
+	
 	--
 	
 	-- GUID component
@@ -349,17 +436,26 @@ end
 
 -- NOT WARRIOR COMPLIANT: FILE NAMES
 wget.callbacks.finish = function(start_time, end_time, wall_time, numurls, total_downloaded_bytes, total_download_time)
-  local fileguid = io.open(item_dir..'/'..warc_file_base..'_geoguid.txt', 'wb')
+	-- remove stub GUID from undocumented API call
+	newUserGuidList["00000000-0000-0000-0000-000000000000"] = nil
+	
+	local fileguid = io.open(item_dir..'/'..warc_file_base..'_guid.txt', 'wb')
+	
+	for guid, _ in pairs(newGuidList) do
+		fileguid:write("guid:" .. guid .. "\n")
+	end
   
-  for guid, _ in pairs(newGuidList) do
-    fileguid:write("guid:" .. guid .. "\n")
-  end
-  
-  local fileuser = io.open(item_dir..'/'..warc_file_base..'_geouser.txt', 'wb')
-  for user, _ in pairs(newUserList) do
-    fileuser:write("user:" .. user .. "\n")
-  end
-  
-  fileguid:close()
-  fileuser:close()
+	local fileuser = io.open(item_dir..'/'..warc_file_base..'_user.txt', 'wb')
+	for user, _ in pairs(newUserList) do
+		fileuser:write("user:" .. user .. "\n")
+	end
+	
+	local fileuserguid = io.open(item_dir..'/'..warc_file_base..'_userguid.txt', 'wb')
+	for user, userguid in pairs(newUserGuidList) do
+		fileuserguid:write("userguid:" .. user ..":".. userguid .. "\n")
+	end
+	
+	fileguid:close()
+	fileuser:close()
+	fileuserguid:close()
 end

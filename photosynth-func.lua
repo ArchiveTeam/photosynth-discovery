@@ -1,11 +1,14 @@
+function round(num, numDecimalPlaces)
+	local mult = 10^(numDecimalPlaces or 0)
+	return math.floor(num * mult + 0.5) / mult
+end
+
+
 -- if tabl passed then write results to this table
 function findGuids(filetext, tabl)
 	local list = tabl or {}
 	for guid in filetext:gmatch("%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x") do
-		if not list[guid] then
-			list[guid] = true
-			print("New guid found: ".. guid)
-		end
+		list[guid] = true
 	end
 	
 	return list
@@ -14,10 +17,7 @@ end
 function findUsers(filetext, tabl)
 	local list = tabl or {}
 	for name in filetext:gmatch("\"OwnerUsername\"%:\"([0-9a-zA-Z%-%_]+)\"") do
-		if not list[name] then
-			list[name] = true
-			print("New name found: ".. name)
-		end
+		list[name] = true
 	end
 	
 	return list
@@ -166,7 +166,8 @@ function createSubJobCustom(totalResults, url)
 		
 		-- do we have less items than the limit?
 		if totalResults <= maxIter then
-			table.insert(URLTable, string.gsub(url, "&offset=%d+", "&offset=".. i))
+			local URLText = string.gsub(url, "&offset=%d+", "&offset=".. i)
+			table.insert(URLTable, URLText)
 		else
 			io.stdout:write("[ERR] totalResults is bigger than maxIter: ".. totalResults .." < ".. maxIter, "\n")
 			io.stdout:flush()
