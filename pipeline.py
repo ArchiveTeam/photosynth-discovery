@@ -117,8 +117,7 @@ class CustomScraperArgs(object):
         item_type, item_value = item['item_name'].split(':', 1)
 
         if item_type == 'item':
-            pass
-#            return [arguments] TODO
+#            return ["lua", "guid-extract.lua"] TODO
         else:
             raise ValueError('unhandled item type: {0}'.format(item_type))
 
