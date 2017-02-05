@@ -58,7 +58,7 @@ if not WGET_LUA:
 #
 # Update this each time you make a non-cosmetic change.
 # It will be added to the WARC files and reported to the tracker.
-VERSION = "20170205.01"
+VERSION = "20170205.02"
 USER_AGENT = 'ArchiveTeam'
 TRACKER_ID = 'photosynthdisco'
 TRACKER_HOST = 'tracker.archiveteam.org'
@@ -123,6 +123,9 @@ class PrepareDirectories(SimpleTask):
             time.strftime("%Y%m%d-%H%M%S"))
 
         open("%(item_dir)s/%(warc_file_base)s.warc.gz" % item, "w").close()
+        open("%(item_dir)s/%(warc_file_base)s_guid.txt" % item, "w").close()
+        open("%(item_dir)s/%(warc_file_base)s_user.txt" % item, "w").close()
+        open("%(item_dir)s/%(warc_file_base)s_userguid.txt" % item, "w").close()
 
 
 class MoveFiles(SimpleTask):
@@ -136,6 +139,12 @@ class MoveFiles(SimpleTask):
 
         os.rename("%(item_dir)s/%(warc_file_base)s.warc.gz" % item,
               "%(data_dir)s/%(warc_file_base)s.warc.gz" % item)
+        os.rename("%(item_dir)s/%(warc_file_base)s_guid.txt" % item,
+              "%(data_dir)s/%(warc_file_base)s_guid.txt" % item)
+        os.rename("%(item_dir)s/%(warc_file_base)s_user.txt" % item,
+              "%(data_dir)s/%(warc_file_base)s_user.txt" % item)
+        os.rename("%(item_dir)s/%(warc_file_base)s_userguid.txt" % item,
+              "%(data_dir)s/%(warc_file_base)s_userguid.txt" % item)
 
         shutil.rmtree("%(item_dir)s" % item)
 
@@ -263,7 +272,10 @@ pipeline = Pipeline(
             downloader=downloader,
             version=VERSION,
             files=[
-                ItemInterpolation("%(data_dir)s/%(warc_file_base)s.warc.gz")
+                ItemInterpolation("%(data_dir)s/%(warc_file_base)s.warc.gz"),
+                ItemInterpolation("%(data_dir)s/%(warc_file_base)s_guid.txt"),
+                ItemInterpolation("%(data_dir)s/%(warc_file_base)s_user.txt"),
+                ItemInterpolation("%(data_dir)s/%(warc_file_base)s_userguid.txt")
             ],
             rsync_target_source_path=ItemInterpolation("%(data_dir)s/"),
             rsync_extra_args=[
