@@ -58,7 +58,7 @@ if not WGET_LUA:
 #
 # Update this each time you make a non-cosmetic change.
 # It will be added to the WARC files and reported to the tracker.
-VERSION = "20170205.02"
+VERSION = "20170205.03"
 USER_AGENT = 'ArchiveTeam'
 TRACKER_ID = 'photosynthdisco'
 TRACKER_HOST = 'tracker.archiveteam.org'
@@ -197,9 +197,9 @@ class WgetArgs(object):
             "--warc-file", ItemInterpolation("%(item_dir)s/%(warc_file_base)s"),
             "--warc-header", "operator: Archive Team",
             "--warc-header", "photosynth-dld-script-version: " + VERSION,
-            "--warc-header", ItemInterpolation("photosynth-item: %(item_name)s")
+            "--warc-header", ItemInterpolation("photosynth-item: %(item_name)s"),
             "--warc-header", "photosynth.lua-hash: " + LUA_SHA1,
-            "--warc-header", "photosynth-func.lua-hash: " + LUA_SHA1,
+            "--warc-header", "photosynth-func.lua-hash: " + LUA_SHA2,
             "--warc-header", "pipeline.py-hash: " + PIPELINE_SHA1
         ]
         
