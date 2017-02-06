@@ -1,6 +1,7 @@
+-- Lua 5.3 integer / floating point fix - tostring() would return e.g. 5.0 instead of 5
 function round(num, numDecimalPlaces)
 	local mult = 10^(numDecimalPlaces or 0)
-	return math.floor(num * mult + 0.5) / mult
+	return math.ceil(math.floor(num * mult + 0.5) / mult)
 end
 
 
