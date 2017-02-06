@@ -27,7 +27,8 @@ local newUserGuidList = {
 photosynthDiscoWhitelist = {
 -- is later added automatically with inserted username "https?://photosynth.net/userprofilepage.aspx%?user=<USERNAME>",
 "https?://photosynth%.net/rest/v1%.0/",
-"/thumb%.jpg$"
+"/thumb%.jpg$",
+"https?://photosynth%.net/PhotosynthHandler%.ashx"
 }
 
 -- RSS feed?
