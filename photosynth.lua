@@ -62,11 +62,13 @@ function regexEscape(str)
 end
 
 wget.callbacks.init = function ()
+	local file = assert(io.open("ignore-list", "rb"))
 	-- URL blacklist
-	for ignore in io.lines("ignore-list", "r") do
+	for ignore in file:lines() do
 		--print("Ignoring: ".. ignore)
 		downloaded[ignore] = true
 	end
+	file:close()
 end
 
 -- Add items from ENV
