@@ -325,10 +325,10 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
 				
 				local step = 10
 				local maxIter = round(math.ceil(count/step)*step, 1)
-				for i = 0, maxIter, step do
+				for i = maxIter, 0, -step do	-- add URLs in reverse, so they're parsed in correct order from 0 to N
 				
-					local postData = "collectionId=&cmd=getusersynths&text=".. i+step ..",".. i ..",".. newUserGuidList[username]
-					--print("Queued: ".. i+step ..",".. i)
+					local postData = "collectionId=&cmd=getusersynths&text=".. step ..",".. i+step ..",".. newUserGuidList[username]
+					--print("POST DATA: "..postData.. " for url ".. getUploadsUrl)
 					table.insert(urls, {url = getUploadsUrl, post_data = postData})
 					
 				end
